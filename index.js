@@ -25,6 +25,13 @@ async function run() {
       const result = await cursor.toArray();
       res.send(result);
     });
+    app.get("/booking", async (req, res) => {
+      const patient = req.query.patient;
+      const query = { patient: patient };
+      const cursor = bookingCollection.find(query);
+      const result = await cursor.toArray();
+      res.send(result);
+    });
     app.post("/booking", async (req, res) => {
       const booking = req.body;
       const query = {
@@ -40,24 +47,33 @@ async function run() {
       res.send({ success: true, result });
     });
 
+    //not the proper way use mongodb's aggregation, pipeline lookup
     app.get("/available", async (req, res) => {
-      const date = req.query.date || "May 20, 2022";
-      //get all the services
+      const date = req.query.date;
+
+      // step 1:  get all services
       const services = await serviceCollection.find().toArray();
-      //get all the booking of that day
+
+      // step 2: get the booking of that day. output: [{}, {}, {}, {}, {}, {}]
       const query = { date: date };
       const bookings = await bookingCollection.find(query).toArray();
-      //for each service, find bookings for that service
+
+      // step 3: for each service
       services.forEach((service) => {
+        // step 4: find bookings for that service. output: [{}, {}, {}, {}]
         const serviceBookings = bookings.filter(
-          (b) => b.treatment === service.name
+          (book) => book.treatment === service.name
         );
-        service.booked = serviceBookings.map((s) => s.slot);
-        console.log("booked", service.booked);
-        service.availabe = service.slots.filter(
-          (s) => !service.booked.includes(s)
+        // step 5: select slots for the service Bookings: ['', '', '', '']
+        const bookedSlots = serviceBookings.map((book) => book.slot);
+        // step 6: select those slots that are not in bookedSlots
+        const available = service.slots.filter(
+          (slot) => !bookedSlots.includes(slot)
         );
+        //step 7: set available to slots to make it easier
+        service.slots = available;
       });
+
       res.send(services);
     });
   } finally {
