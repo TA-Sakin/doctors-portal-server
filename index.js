@@ -36,10 +36,22 @@ async function run() {
     const serviceCollection = client.db("doctorsPortal").collection("services");
     const bookingCollection = client.db("doctorsPortal").collection("booking");
     const userCollection = client.db("doctorsPortal").collection("users");
+    const doctorsCollection = client.db("doctorsPortal").collection("doctors");
 
+    const verifyAdmin = async (req,res,next)=>{
+      const requestor = req.decoded.email;
+          const requestorAccount = await userCollection.findOne({email:requestor})
+          if(requestorAccount.role === 'admin'){
+            next()
+          }
+          else{
+            res.status(403).send({message: 'forbidden'})
+          }
+    }
+    
     app.get("/service", async (req, res) => {
       const query = {};
-      const cursor = serviceCollection.find(query);
+      const cursor = serviceCollection.find(query).project({name:1});
       const result = await cursor.toArray();
       res.send(result);
     });
@@ -105,20 +117,14 @@ async function run() {
       res.send(services);
     });
 
-    app.put("/user/admin/:email", verifyJWT, async (req, res) => {
+    app.put("/user/admin/:email", verifyJWT, verifyAdmin, async (req, res) => {
       const email = req.params.email;
-      const requestor = req.decoded.email;
-      const requestorAccount = await userCollection.findOne({email:requestor})
-      if(requestorAccount.role==='admin'){
         const filter = { email: email };
         const updateDoc = {
           $set: {role: 'admin'},
         };
         const result = await userCollection.updateOne(filter, updateDoc);
         res.send(result);
-      }else{
-        res.status(403).send({message: 'forbidden'})
-      }
     });
     app.get('/admin/:email', async(req,res)=>{
       const email = req.params.email;
@@ -142,6 +148,12 @@ async function run() {
       );
       res.send({result, token});
     });
+
+    app.post('/doctors', verifyJWT, verifyAdmin, async(req,res)=>{
+      const doctors = req.body;
+      const result = await doctorsCollection.insertOne(doctors)
+      res.send(result)
+    })
   } finally {
     // client.close();
   }
