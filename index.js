@@ -4,6 +4,8 @@ const cors = require("cors");
 require("dotenv").config();
 const app = express();
 const jwt = require("jsonwebtoken");
+const nodemailer = require('nodemailer');
+const mg = require('nodemailer-mailgun-transport');
 const port = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
@@ -14,7 +16,6 @@ const client = new MongoClient(uri, {
   useUnifiedTopology: true,
   serverApi: ServerApiVersion.v1,
 });
-
 function verifyJWT(req,res,next){
   const authHeader = req.headers.authorization
   if(!authHeader){
@@ -29,6 +30,41 @@ function verifyJWT(req,res,next){
       next()
     });
 }
+
+function sendAppointmentEmail(booking){
+  const {patient, patientName, treatment, date, slot} = booking;
+  const email = {
+    from: 'myemail@example.com',
+    to: 'altahjib10@gmail.com',
+    subject: `Your appointment for ${treatment} is on ${date} at ${slot} is confirmed`,
+    html: `
+    <div>
+    <p>Hello, ${patientName}</p>
+    <h3>Your appointment for ${treatment} is confirmed!</h3>
+    <p>Looking forward to seeing you on ${date} at ${slot}.</p>
+    <h3>Our address</h3>
+    <p>Chittagong,Bangladesh</p>
+    <a href="https://github.com/TA-Sakin">unsubscribe</a>
+    </div>
+    `,
+    text: `Your appointment for ${treatment} is on ${date} at ${slot} is confirmed`
+  }
+  nodemailerMailgun.sendMail(email, (err, info) => {
+    if (err) {
+      console.log(err);
+    }
+    else {
+      console.log(info);
+    }
+  });
+}
+const auth = {
+  auth: {
+    api_key: process.env.EMAIL_SENDER_KEY,
+    domain: 'sandboxd96939b91c8047c2acb2afcd3f91dcf4.mailgun.org'
+  }
+}
+const nodemailerMailgun = nodemailer.createTransport(mg(auth));
 
 async function run() {
   try {
@@ -48,7 +84,7 @@ async function run() {
             res.status(403).send({message: 'forbidden'})
           }
     }
-    
+
     app.get("/service", async (req, res) => {
       const query = {};
       const cursor = serviceCollection.find(query).project({name:1});
@@ -84,6 +120,8 @@ async function run() {
         return res.send({ success: false, booking: exists });
       }
       const result = await bookingCollection.insertOne(booking);
+      console.log('sending email')
+      sendAppointmentEmail( booking)
       res.send({ success: true, result });
     });
 
@@ -154,6 +192,17 @@ async function run() {
       const result = await doctorsCollection.insertOne(doctors)
       res.send(result)
     })
+
+    app.get("/doctors", verifyJWT, verifyAdmin, async (req, res) => {
+      const doctors = await doctorsCollection.find().toArray();
+      res.send(doctors);
+    });
+    app.delete("/doctor/:email", verifyJWT, verifyAdmin, async (req, res) => {
+      const email = req.params.email;
+      const filter = {email: email}
+      const result = await doctorsCollection.deleteOne(filter);
+      res.send(result);
+    });
   } finally {
     // client.close();
   }
